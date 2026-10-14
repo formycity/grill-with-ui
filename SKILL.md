@@ -372,6 +372,22 @@ On a `finish` action, or when the user says finish in the terminal:
    (deferred questions, with what would reopen them); **Open threads** (discussion points
    that ended without a decision). Do not compress: a reader with no access to the session
    must be able to build from it.
+1b. Update the project's domain docs from the same decisions (skip any part with nothing to
+   write; create files lazily). If a `domain-modeling` skill is installed (for example
+   `~/.agents/skills/domain-modeling/`), read its `GLOSSARY-FORMAT.md` and `ADR-FORMAT.md` and
+   follow them; otherwise use the defaults below.
+   - **Glossary:** merge every entry in `state.terms` into the project's `GLOSSARY.md`
+     (follow `GLOSSARY-MAP.md` if one exists; else the root `GLOSSARY.md`, created if
+     missing). Keep each term's one-sentence definition and its Avoid list; replace an
+     existing entry for the same term rather than duplicating it. No implementation details.
+   - **ADRs:** for each `durable` (locked) question that is hard to reverse, surprising
+     without context, and the result of a real trade-off, write one ADR in `docs/adr/`
+     (or the context's `docs/adr/`), numbered after the highest existing file as
+     `NNNN-slug.md`. A short paragraph is enough: the decision, why, and the rejected options
+     with why each lost. If a new decision overturns an existing ADR, mark the old one
+     `superseded by ADR-NNNN` instead of editing its content. Skip routine choices.
+   - Link the glossary and each new ADR from the design doc's summary, and list the files
+     you wrote or changed in the step 5 line.
 2. Patch `"finished": { "doc": … }` and `"agent": { "status": "waiting" }`
    (after a page Finish this is the send's one patch, with `handled`); the page shows the
    finished banner and locks staging.
@@ -387,7 +403,8 @@ On a `finish` action, or when the user says finish in the terminal:
    draw must land first; queue any further reconciliation under those same rules.
 4. Once there is no draw in flight and the exports are complete, stop the persistent
    Monitor with TaskStop, or stop the server as described in Wait mode.
-5. Print one line with the doc path (and the visual's). End.
+5. Print one line with the doc path (and the visual's), plus any `GLOSSARY.md` and ADR files
+   written in step 1b. End.
 
 ## Wait mode (agents without a Monitor tool)
 
