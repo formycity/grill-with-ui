@@ -40,6 +40,20 @@ the state grows with the grill: after twenty sends one rewrite is about 60 KB, s
 tokens, paid again on every send. A patch carries only what changed. Below, "set" and
 "append" mean a key in a patch, and `null` is how a key is deleted.
 
+## Language
+
+Grill in the user's conversation language. If the user writes to you in Chinese (or any
+language other than English), write every question title, body, option text, recommendation
+`why`, term definition, thread reply, explore pros/cons, visual, and the design doc (plus any
+GLOSSARY/ADR text you write at Finish) in that language. Keep code identifiers, file paths,
+and option letters (A, B, C) as they are.
+
+Tell the page which UI language to use by setting top-level `lang` in your first patch, e.g.
+`{"lang": "zh-CN"}` for Chinese, `{"lang": "en"}` for English. The page picks its chrome
+language as: `?lang=` in the URL > `state.lang` > the browser language (zh* → zh-CN) > English.
+The page ships English and Simplified Chinese (`zh-CN`); the header has a 中文/EN toggle.
+If the user switches language mid-grill, patch `lang` again and continue in the new language.
+
 ## Patching state.json
 
 ```sh
@@ -447,6 +461,7 @@ What each field means. You write it only through `patch`.
 ```jsonc
 {
   "topic": "…", "intent": "why this grill exists, 1-2 sentences", "doc": "docs/x-design.md", "project": "/abs/path", "created": "ISO",
+  "lang": "zh-CN",                                              // optional UI language: "en" | "zh-CN"; match the user's conversation language
   "agent": { "status": "waiting|working", "since": "ISO", "handled": 3 },
   "note": "optional short sentence shown above the question list",
   "finished": { "doc": "docs/x-design.md", "visual": "docs/x-visual.html", "at": "ISO" },  // only after Finish

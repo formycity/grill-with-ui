@@ -41,7 +41,7 @@
   header.working #progress { display: block; }
   #progress::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; background: var(--stage); animation: slide 1.4s ease-in-out infinite; }
   @keyframes slide { from { left: -30%; } to { left: 100%; } }
-  #terms-toggle, #visualize { font-size: 12px; padding: 4px 10px; }
+  #terms-toggle, #visualize, #lang-toggle { font-size: 12px; padding: 4px 10px; }
   #visualize .spin { width: 9px; height: 9px; margin-right: 4px; }
   #visualize:disabled { background: var(--panel); border-color: var(--rule); color: var(--ink-3); }
   #subagent-opt { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
@@ -69,7 +69,7 @@
   .item .mark { font-size: 11px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 4px; }
   .item .mark svg { width: 12px; height: 12px; }
   .mark.answered { color: var(--ok); } .mark.open, .mark.reopened { color: var(--accent); } .mark.staged { color: var(--stage); font-weight: 600; } .mark.pending { color: var(--stage); }
-  .item.updated .t::after { content: "updated"; font-size: 10px; color: var(--stage); margin-left: 6px; letter-spacing: .06em; text-transform: uppercase; }
+  .item.updated .t::after { content: attr(data-upd); font-size: 10px; color: var(--stage); margin-left: 6px; letter-spacing: .06em; text-transform: uppercase; }
   nav .empty { padding: 20px; font-size: 13px; color: var(--ink-3); }
 
   /* Visualize view: the list and card columns give way to the visual; the right panel becomes its feedback. */
@@ -232,20 +232,21 @@
   <button id="terms-toggle" type="button">Terms</button>
   <div id="terms"></div>
   <button id="visualize" type="button" hidden>Visualize</button>
-  <span id="subagent-opt" hidden><input type="checkbox" id="use-subagent" checked><label for="use-subagent">Use subagent</label><span id="subagent-info" class="info" tabindex="0" role="img" aria-label="Using subagents frees up your main context for grilling. You can switch this off once you are done grilling to make the visualization build faster." data-tip="Using subagents frees up your main context for grilling. You can switch this off once you are done grilling to make the visualization build faster.">i</span></span>
-  <span class="status"><span class="dot" id="agent-dot"></span><span id="agent-status">connecting…</span></span>
+  <span id="subagent-opt" hidden><input type="checkbox" id="use-subagent" checked><label for="use-subagent" data-i18n="useSubagent">Use subagent</label><span id="subagent-info" class="info" data-i18n-tip="subagentTip" tabindex="0" role="img" aria-label="Using subagents frees up your main context for grilling. You can switch this off once you are done grilling to make the visualization build faster." data-tip="Using subagents frees up your main context for grilling. You can switch this off once you are done grilling to make the visualization build faster.">i</span></span>
+  <span class="status"><span class="dot" id="agent-dot"></span><span id="agent-status" data-i18n="connectingLower">connecting…</span></span>
+  <button id="lang-toggle" type="button" title="Language / 语言">中文</button>
   <div id="progress"></div>
 </header>
-<nav id="nav"><div class="empty">Connecting…</div></nav>
+<nav id="nav"><div class="empty" data-i18n="connecting">Connecting…</div></nav>
 <main id="main"></main>
-<section id="visual"><div id="visual-strip"></div><div id="visual-wait" hidden><span class="spin"></span>Drawing the first version…</div><iframe id="visual-frame" title="Visual" sandbox="allow-scripts"></iframe></section>
+<section id="visual"><div id="visual-strip"></div><div id="visual-wait" hidden><span class="spin"></span><span data-i18n="drawingFirst">Drawing the first version…</span></div><iframe id="visual-frame" title="Visual" sandbox="allow-scripts"></iframe></section>
 <aside id="aside"></aside>
 <footer>
   <span class="staged-list" id="staged-list"></span>
   <span class="warn" id="send-why"></span>
-  <span class="hint">⌘↩ send</span>
+  <span class="hint" data-i18n="hintSend">⌘↩ send</span>
   <span id="finish-area"></span>
-  <button class="primary" id="send" type="button" disabled>Send to Agent</button>
+  <button class="primary" id="send" type="button" disabled data-i18n="sendToAgent">Send to Agent</button>
 </footer>
 <script>
 "use strict";
@@ -253,9 +254,95 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const WORKING_GRACE_MS = 5 * 60 * 1000;
 const DRAW_GRACE_MS = 10 * 60 * 1000; // a background draw older than this is treated as stuck: Regenerate comes back
-const DRAW_STUCK_NOTE = "The draw has run over 10 minutes; regenerate to try again.";
 const GONE_AFTER_MS = 3000;
 const CHECK = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="currentColor"/><path d="M6 10.4l2.6 2.6L14 7.4" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+// ---- i18n ----
+// Language: ?lang= in the URL > state.lang (set by the agent) > the browser language (zh* -> zh-CN) > en.
+const I18N = {
+  en: {
+    useSubagent: "Use subagent", subagentTip: "Using subagents frees up your main context for grilling. You can switch this off once you are done grilling to make the visualization build faster.",
+    connecting: "Connecting…", connectingLower: "connecting…", drawingFirst: "Drawing the first version…", hintSend: "⌘↩ send", sendToAgent: "Send to Agent",
+    langToggle: "中文", drawStuck: "The draw has run over 10 minutes; regenerate to try again.",
+    serverGone: "server gone", agentNotListening: (t) => `The agent has been working for ${t}; it may not be listening.`,
+    sendWaited: (n, t) => `Send #${n} has waited ${t} for the agent; it may not be listening.`, sendFailed: "Send failed: ", noServer: "no server",
+    finishedBanner: (d, v, a) => `Finished · the design doc was written to ${d}${v ? ", the visual to " + v : ""}${a ? " at " + a : ""}.`, docPath: "the doc path",
+    goneBanner: "Server gone. Resume the grill from the terminal; this tab reconnects by itself.",
+    terms: "Terms", avoid: "Avoid: ", noTerms: "No terms yet. The agent adds vocabulary here as it settles.",
+    questions: "Questions", visual: "Visual", visualizing: "Visualizing…", visualize: "Visualize", visualizeTip: "Draw a prototype or diagram of the design so far",
+    diagram: "Diagram", prototype: "Prototype", firstVersion: "first version on its way", agentBusy: "the agent is busy",
+    stale: "Out of date · regenerate to include the latest decisions", regenerating: " regenerating…", regenerate: "Regenerate",
+    finishedStatus: "finished", agentWorking: "Agent working · ", agentWaiting: (s, h) => `Agent waiting for you${s ? " · since " + s : ""}${h ? " · handled #" + h : ""}`,
+    waitingFirst: "Waiting for the first round…", round: (r, cur) => `Round ${r}${cur ? " · current" : ""}`, staged: "staged", sent: "sent", textAnswer: "text", updated: "updated",
+    status_open: "open", status_answered: "answered", status_deferred: "deferred", status_reopened: "reopened",
+    pickLeft: "Pick a question on the left.", noQuestions: "No questions yet.", roundLower: "round", after: "after ", root: "root", durable: "durable",
+    recUpdated: "recommendation updated", deferred: "deferred", reopened: "reopened", recommended: "Recommended", yourAnswer: "Your answer", yourAnswerSending: "Your answer · sending",
+    why: (k) => `Why ${k}.`, suggested: "Suggested.", stagedDefer: "Staged: defer this question", stagedReopen: "Staged: reopen this question",
+    stagedAccept: (k) => `Staged: accept ${k}`, stagedOptions: (k) => `Staged: options ${k}`, stagedOption: (k) => `Staged: option ${k}`, stagedText: (t) => `Staged text: “${t}”`, clear: "clear",
+    sentPending: (b) => `Sent: ${b} this question · waiting for the agent`, act_defer: "defer", act_reopen: "reopen",
+    phChange: "Change your answer, or add nuance…", phFree: "Free-text answer, if none of the options fit…", phAnswer: "Your answer…",
+    stageTextTip: "Stage text (⌘↩)", stageText: "Stage text", acceptRec: (k) => `Accept the recommended ${k}`, deferQ: "Defer this question", reopenQ: "Reopen this question",
+    exploring: " Exploring…", exploreAgain: "Explore again", exploreDeeper: "Explore deeper", pickMulti: "Pick one or more",
+    who_agent: "agent", who_user: "user", youSending: "you · sending", youStaged: "you · staged", remove: "Remove",
+    prosCons: "Pros and cons", pros: "Pros", cons: "Cons", exploreWait: " Exploring: the agent is writing a pros and cons table for this question.",
+    discussion: "Discussion", msgs: (n) => `${n} message${n === 1 ? "" : "s"}`, emptyThread: "Nothing yet. Ask anything about this question; the agent answers here on the next send.",
+    digDeeper: (id) => `Dig deeper on ${id}…`, stageMsgTip: "Stage message (⌘↩)", addDiscussion: "Add to discussion",
+    visualFeedback: "Visual feedback", emptyFeedback: "Nothing yet. Say what is wrong or missing in the visual; the agent redraws it on the next send. If a note contradicts an answered question, that question is reopened for you.",
+    phFeedback: "Feedback on the visual…", stageFbTip: "Stage feedback (⌘↩)", addFeedback: "Add feedback",
+    plusMsg: (n) => `+${n} msg`, visualPlus: (n) => `visual +${n} msg`, sentWaiting: (n) => `Sent #${n} · waiting for the agent`, grillFinished: "This grill is finished.",
+    nStaged: (n) => `${n} staged`, nothingStaged: "Nothing staged. Pick an option or write in the discussion.", finishing: "Finishing…",
+    confirmFinish: "Finish this grill? Everything staged goes with it; the agent writes the design doc and stops.", finishGrill: "Finish grill", cancel: "Cancel",
+    readyTip: "Every question is settled. Finish writes the design doc.", sendN: (n) => `Send ${n} to Agent`,
+  },
+  "zh-CN": {
+    useSubagent: "使用子 Agent", subagentTip: "使用子 Agent 可以为拷问保留主上下文。拷问结束后可以关掉它，让可视化生成得更快。",
+    connecting: "连接中…", connectingLower: "连接中…", drawingFirst: "正在绘制第一版…", hintSend: "⌘↩ 发送", sendToAgent: "发送给 Agent",
+    langToggle: "EN", drawStuck: "绘制已超过 10 分钟，请重新生成。",
+    serverGone: "服务器已断开", agentNotListening: (t) => `Agent 已工作 ${t}，可能没有在监听。`,
+    sendWaited: (n, t) => `第 ${n} 次发送已等待 Agent ${t}，它可能没有在监听。`, sendFailed: "发送失败：", noServer: "无服务器",
+    finishedBanner: (d, v, a) => `已完成 · 设计文档已写入 ${d}${v ? "，可视化已写入 " + v : ""}${a ? "（" + a + "）" : ""}。`, docPath: "文档路径",
+    goneBanner: "服务器已断开。请在终端中恢复拷问，此标签页会自动重连。",
+    terms: "术语", avoid: "避免使用：", noTerms: "暂无术语。Agent 会在词汇确定后添加到这里。",
+    questions: "问题", visual: "可视化", visualizing: "绘制中…", visualize: "可视化", visualizeTip: "为目前的设计绘制原型或示意图",
+    diagram: "示意图", prototype: "原型", firstVersion: "第一版正在生成", agentBusy: "Agent 正忙",
+    stale: "已过时 · 重新生成以包含最新决策", regenerating: " 重新生成中…", regenerate: "重新生成",
+    finishedStatus: "已完成", agentWorking: "Agent 工作中 · ", agentWaiting: (s, h) => `Agent 等待你的输入${s ? " · 自 " + s : ""}${h ? " · 已处理 #" + h : ""}`,
+    waitingFirst: "等待第一轮问题…", round: (r, cur) => `第 ${r} 轮${cur ? " · 当前" : ""}`, staged: "已暂存", sent: "已发送", textAnswer: "文字", updated: "已更新",
+    status_open: "待回答", status_answered: "已回答", status_deferred: "已推迟", status_reopened: "已重开",
+    pickLeft: "从左侧选择一个问题。", noQuestions: "还没有问题。", roundLower: "第几轮", after: "依赖 ", root: "根问题", durable: "长期决策",
+    recUpdated: "推荐已更新", deferred: "已推迟", reopened: "已重开", recommended: "推荐", yourAnswer: "你的回答", yourAnswerSending: "你的回答 · 发送中",
+    why: (k) => `为什么选 ${k}。`, suggested: "建议。", stagedDefer: "已暂存：推迟此问题", stagedReopen: "已暂存：重开此问题",
+    stagedAccept: (k) => `已暂存：接受 ${k}`, stagedOptions: (k) => `已暂存：选项 ${k}`, stagedOption: (k) => `已暂存：选项 ${k}`, stagedText: (t) => `已暂存文字：“${t}”`, clear: "清除",
+    sentPending: (b) => `已发送：${b}此问题 · 等待 Agent`, act_defer: "推迟", act_reopen: "重开",
+    phChange: "修改你的回答，或补充细节…", phFree: "如果没有合适的选项，可在此自由作答…", phAnswer: "你的回答…",
+    stageTextTip: "暂存文字 (⌘↩)", stageText: "暂存文字", acceptRec: (k) => `接受推荐的 ${k}`, deferQ: "推迟此问题", reopenQ: "重开此问题",
+    exploring: " 分析中…", exploreAgain: "再次深入分析", exploreDeeper: "深入分析", pickMulti: "可多选",
+    who_agent: "Agent", who_user: "你", youSending: "你 · 发送中", youStaged: "你 · 已暂存", remove: "移除",
+    prosCons: "优缺点", pros: "优点", cons: "缺点", exploreWait: " 分析中：Agent 正在为此问题撰写优缺点对比表。",
+    discussion: "讨论", msgs: (n) => `${n} 条消息`, emptyThread: "还没有内容。关于此问题可以随便问，Agent 会在下次发送后在这里回答。",
+    digDeeper: (id) => `深入探讨 ${id}…`, stageMsgTip: "暂存消息 (⌘↩)", addDiscussion: "加入讨论",
+    visualFeedback: "可视化反馈", emptyFeedback: "还没有内容。说说可视化中哪里不对或缺了什么，Agent 会在下次发送后重画。如果反馈与已回答的问题矛盾，该问题会被重新打开。",
+    phFeedback: "对可视化的反馈…", stageFbTip: "暂存反馈 (⌘↩)", addFeedback: "添加反馈",
+    plusMsg: (n) => `+${n} 条消息`, visualPlus: (n) => `可视化 +${n} 条消息`, sentWaiting: (n) => `已发送 #${n} · 等待 Agent`, grillFinished: "本次拷问已结束。",
+    nStaged: (n) => `已暂存 ${n} 项`, nothingStaged: "没有暂存内容。选择一个选项或在讨论中写点什么。", finishing: "正在结束…",
+    confirmFinish: "结束本次拷问？所有暂存内容会一并发送，Agent 将写出设计文档并停止。", finishGrill: "结束拷问", cancel: "取消",
+    readyTip: "所有问题都已确定。结束后将写出设计文档。", sendN: (n) => `发送 ${n} 项给 Agent`,
+  },
+};
+const normLang = (l) => { l = String(l || "").trim(); if (!l) return ""; if (/^zh/i.test(l)) return "zh-CN"; if (/^en/i.test(l)) return "en"; return I18N[l] ? l : ""; };
+const urlLang = () => { try { return normLang(new URLSearchParams(location.search).get("lang")); } catch { return ""; } };
+function pickLang() { return urlLang() || normLang(S && S.lang) || normLang((navigator.languages && navigator.languages[0]) || navigator.language) || "en"; }
+let LANG = "en"; // picked for real once S exists (just before the first poll)
+function L(k, ...a) { const d = I18N[LANG] || I18N.en; const v = k in d ? d[k] : I18N.en[k]; return typeof v === "function" ? v(...a) : (v ?? k); }
+function applyStatic() {
+  document.documentElement.lang = LANG;
+  document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = L(el.dataset.i18n)));
+  document.querySelectorAll("[data-i18n-tip]").forEach((el) => { const v = L(el.dataset.i18nTip); el.setAttribute("aria-label", v); el.dataset.tip = v; });
+  $("lang-toggle").textContent = L("langToggle");
+}
+function setLang(l) { const n = normLang(l) || "en"; if (n === LANG) return; LANG = n; applyStatic(); if (S) render(); }
+const kindLabel = (v) => (v.kind === "diagram" ? L("diagram") : L("prototype"));
+const whoLabel = (w) => L(w === "agent" ? "who_agent" : "who_user");
 
 let S = null, raw = null, selected = null, storeKey = null;
 let lastOk = Date.now(), gone = false, confirmFinish = false, intentOpen = false;
@@ -304,6 +391,7 @@ async function poll() {
 function onState() {
   const key = "grill:" + (S.project || "") + ":" + (S.created || "");
   if (key !== storeKey) { storeKey = key; load(); }
+  setLang(pickLang());
   const handled = Number((S.agent || {}).handled) || 0;
   const still = local.pending.filter((p) => p.seq > handled);
   if (still.length !== local.pending.length) {
@@ -372,25 +460,25 @@ function buildActions() {
 function sendState(needStaged = true) {
   const a = (S && S.agent) || {};
   if (locked()) return { disabled: true, why: "" };
-  if (gone) return { disabled: true, why: "server gone" };
+  if (gone) return { disabled: true, why: L("serverGone") };
   if (needStaged && !stagedCount()) return { disabled: true, why: "" };
   if (a.status === "working") {
     const ms = Date.now() - Date.parse(a.since || 0);
     if (!(ms > WORKING_GRACE_MS)) return { disabled: true, why: "" };
-    return { disabled: false, why: `The agent has been working for ${fmtMs(ms)}; it may not be listening.` };
+    return { disabled: false, why: L("agentNotListening", fmtMs(ms)) };
   }
   const lp = lastPending();
   if (lp) { // sent, but the agent has not even picked it up yet: one event in flight at a time
     const ms = Date.now() - Date.parse(lp.at || 0);
     if (!(ms > WORKING_GRACE_MS)) return { disabled: true, why: "" };
-    return { disabled: false, why: `Send #${lp.seq} has waited ${fmtMs(ms)} for the agent; it may not be listening.` };
+    return { disabled: false, why: L("sendWaited", lp.seq, fmtMs(ms)) };
   }
   return { disabled: false, why: "" };
 }
 async function post(actions) {
   let r, j = {};
   try { r = await fetch("/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actions }) }); j = await r.json().catch(() => ({})); } catch { r = null; }
-  if (!j.ok) $("send-why").textContent = "Send failed: " + (j.error || (r && r.status) || "no server");
+  if (!j.ok) $("send-why").textContent = L("sendFailed") + (j.error || (r && r.status) || L("noServer"));
   return j.ok ? j : null;
 }
 async function send() {
@@ -452,8 +540,8 @@ function withThreadScroll(fn) {
 }
 function renderBanner() {
   const b = $("banner");
-  if (S && S.finished) { b.className = "show done"; b.textContent = `Finished · the design doc was written to ${S.finished.doc || S.doc || "the doc path"}${S.finished.visual ? ", the visual to " + S.finished.visual : ""}${S.finished.at ? " at " + timeOf(S.finished.at) : ""}.`; }
-  else if (gone) { b.className = "show"; b.textContent = "Server gone. Resume the grill from the terminal; this tab reconnects by itself."; }
+  if (S && S.finished) { b.className = "show done"; b.textContent = L("finishedBanner", S.finished.doc || S.doc || L("docPath"), S.finished.visual || "", S.finished.at ? timeOf(S.finished.at) : ""); }
+  else if (gone) { b.className = "show"; b.textContent = L("goneBanner"); }
   else { b.className = ""; b.textContent = ""; }
 }
 function renderHeader() {
@@ -470,22 +558,22 @@ function renderHeader() {
   }
   else { intentEl.textContent = ""; intentEl.title = ""; intentEl.classList.remove("show", "open", "clamped"); intentOpen = false; }
   const terms = Array.isArray(S.terms) ? S.terms : [];
-  $("terms-toggle").textContent = `Terms${terms.length ? " · " + terms.length : ""}`;
+  $("terms-toggle").textContent = `${L("terms")}${terms.length ? " · " + terms.length : ""}`;
   $("terms").innerHTML = terms.length
-    ? terms.map((t) => `<div class="term"><b>${esc(t.term)}</b> — ${esc(t.def)}${t.avoid && t.avoid.length ? `<div class="avoid">Avoid: ${t.avoid.map(esc).join(", ")}</div>` : ""}</div>`).join("")
-    : `<div class="term" style="color:var(--ink-3)">No terms yet. The agent adds vocabulary here as it settles.</div>`;
+    ? terms.map((t) => `<div class="term"><b>${esc(t.term)}</b> — ${esc(t.def)}${t.avoid && t.avoid.length ? `<div class="avoid">${esc(L("avoid"))}${t.avoid.map(esc).join(", ")}</div>` : ""}</div>`).join("")
+    : `<div class="term" style="color:var(--ink-3)">${esc(L("noTerms"))}</div>`;
   renderVisualizeButton();
   renderStatus();
 }
 function renderVisualizeButton() {
   const b = $("visualize"); const v = visual(); const lk = locked();
   $("subagent-opt").hidden = lk; $("use-subagent").checked = useSubagent();
-  if (hasVisual()) { b.hidden = false; b.disabled = false; b.title = ""; b.textContent = activeView() === "visualize" ? "Questions" : `Visual · v${esc(v.version)}`; return; }
+  if (hasVisual()) { b.hidden = false; b.disabled = false; b.title = ""; b.textContent = activeView() === "visualize" ? L("questions") : `${L("visual")} · v${esc(v.version)}`; return; }
   if (lk) { b.hidden = true; return; }
   b.hidden = false;
-  if (isVisualizing()) { b.disabled = true; b.title = ""; b.innerHTML = `<span class="spin"></span>Visualizing…`; return; }
-  const gate = sendState(false); b.disabled = gate.disabled; b.textContent = "Visualize";
-  b.title = gate.disabled && gate.why ? gate.why : drawStuck() ? DRAW_STUCK_NOTE : "Draw a prototype or diagram of the design so far";
+  if (isVisualizing()) { b.disabled = true; b.title = ""; b.innerHTML = `<span class="spin"></span>${esc(L("visualizing"))}`; return; }
+  const gate = sendState(false); b.disabled = gate.disabled; b.textContent = L("visualize");
+  b.title = gate.disabled && gate.why ? gate.why : drawStuck() ? L("drawStuck") : L("visualizeTip");
 }
 function renderVisual() {
   const v = visual(); const strip = $("visual-strip"); const frame = $("visual-frame");
@@ -494,49 +582,49 @@ function renderVisual() {
   if (!hasVisual()) { // first draw still running: no file to show yet, never request v0
     if (frame.dataset.v) { frame.removeAttribute("src"); delete frame.dataset.v; }
     frame.hidden = true; wait.hidden = false;
-    strip.innerHTML = `<span class="kind">${v.kind === "diagram" ? "Diagram" : "Prototype"}</span><span class="ver">first version on its way</span>`;
+    strip.innerHTML = `<span class="kind">${esc(kindLabel(v))}</span><span class="ver">${esc(L("firstVersion"))}</span>`;
     return;
   }
   wait.hidden = true; frame.hidden = false;
   const src = `/visual?v=${encodeURIComponent(v.version)}`;
   if (frame.dataset.v !== String(v.version)) { frame.dataset.v = String(v.version); frame.setAttribute("src", src); } // only a version bump reloads the iframe; a background redraw keeps the current one
   const busy = isVisualizing(); const gate = sendState(false); const lk = locked();
-  const regenTitle = gate.disabled ? (gate.why || "the agent is busy") : drawStuck() ? DRAW_STUCK_NOTE : "";
-  strip.innerHTML = `<span class="kind">${v.kind === "diagram" ? "Diagram" : "Prototype"}</span>
+  const regenTitle = gate.disabled ? (gate.why || L("agentBusy")) : drawStuck() ? L("drawStuck") : "";
+  strip.innerHTML = `<span class="kind">${esc(kindLabel(v))}</span>
     <span class="ver"><b>v${esc(v.version)}</b>${v.note ? " · " + esc(v.note) : ""}${v.at ? " · " + timeOf(v.at) : ""}</span>
-    ${v.stale ? `<span id="visual-stale" role="status">Out of date · regenerate to include the latest decisions</span>` : ""}
-    <span class="right">${busy ? `<span class="spin"></span> regenerating…` : lk ? "" : `<a href="#" id="regen"${regenTitle ? ` title="${esc(regenTitle)}"` : ""}>Regenerate</a>`}</span>`;
+    ${v.stale ? `<span id="visual-stale" role="status">${esc(L("stale"))}</span>` : ""}
+    <span class="right">${busy ? `<span class="spin"></span>${esc(L("regenerating"))}` : lk ? "" : `<a href="#" id="regen"${regenTitle ? ` title="${esc(regenTitle)}"` : ""}>${esc(L("regenerate"))}</a>`}</span>`;
   const r = $("regen"); if (r) r.onclick = (e) => { e.preventDefault(); visualize(); };
 }
 function renderStatus() {
   const dot = $("agent-dot"), txt = $("agent-status");
-  if (gone) { dot.className = "dot gone"; txt.textContent = "server gone"; return; }
+  if (gone) { dot.className = "dot gone"; txt.textContent = L("serverGone"); return; }
   if (!S) return;
   const a = S.agent || {};
-  if (S.finished) { dot.className = "dot"; txt.textContent = "finished"; document.querySelector("header").classList.remove("working"); return; }
+  if (S.finished) { dot.className = "dot"; txt.textContent = L("finishedStatus"); document.querySelector("header").classList.remove("working"); return; }
   const working = a.status === "working";
   document.querySelector("header").classList.toggle("working", working);
-  if (working) { dot.className = "dot working"; txt.innerHTML = `<span class="spin"></span> Agent working · ${fmtMs(Date.now() - Date.parse(a.since || 0))}`; }
-  else { dot.className = "dot"; txt.textContent = `Agent waiting for you${a.since ? " · since " + timeOf(a.since) : ""}${a.handled ? " · handled #" + a.handled : ""}`; }
+  if (working) { dot.className = "dot working"; txt.innerHTML = `<span class="spin"></span> ${esc(L("agentWorking"))}${fmtMs(Date.now() - Date.parse(a.since || 0))}`; }
+  else { dot.className = "dot"; txt.textContent = L("agentWaiting", a.since ? timeOf(a.since) : "", a.handled || 0); }
 }
 function renderNav() {
   const nav = $("nav"); nav.innerHTML = "";
   if (!S) return;
   if (S.note) { const n = document.createElement("div"); n.className = "note"; n.textContent = S.note; nav.appendChild(n); }
   const all = rounds();
-  if (!all.length) { nav.insertAdjacentHTML("beforeend", `<div class="empty">Waiting for the first round…</div>`); return; }
+  if (!all.length) { nav.insertAdjacentHTML("beforeend", `<div class="empty">${esc(L("waitingFirst"))}</div>`); return; }
   const cur = curRound();
   for (const [r, list] of all) {
     const h = document.createElement("div"); h.className = "round" + (r === cur ? " current" : "");
-    h.innerHTML = `<span>Round ${r}${r === cur ? " · current" : ""}</span><span>${list.length}</span>`; nav.appendChild(h);
+    h.innerHTML = `<span>${esc(L("round", r, r === cur))}</span><span>${list.length}</span>`; nav.appendChild(h);
     for (const q of list) {
       const s = local.staged[q.id];
       const el = document.createElement("div");
       el.className = "item" + (q.id === selected ? " selected" : "") + (q.updated ? " updated" : "");
-      const mark = s ? `<span class="mark staged">staged</span>`
-        : pendingActions(q.id).some((a) => a.type !== "explore") ? `<span class="mark pending"><span class="spin"></span>sent</span>`
-        : `<span class="mark ${esc(q.status)}">${q.status === "answered" ? CHECK + esc(keyLabel(q.answer) || "text") : esc(q.status)}</span>`;
-      el.innerHTML = `<span class="id">${esc(q.id).toUpperCase()}</span><span class="t">${esc(q.title)}</span>${mark}`;
+      const mark = s ? `<span class="mark staged">${esc(L("staged"))}</span>`
+        : pendingActions(q.id).some((a) => a.type !== "explore") ? `<span class="mark pending"><span class="spin"></span>${esc(L("sent"))}</span>`
+        : `<span class="mark ${esc(q.status)}">${q.status === "answered" ? CHECK + esc(keyLabel(q.answer) || L("textAnswer")) : esc(L("status_" + q.status))}</span>`;
+      el.innerHTML = `<span class="id">${esc(q.id).toUpperCase()}</span><span class="t" data-upd="${esc(L("updated"))}">${esc(q.title)}</span>${mark}`;
       el.onclick = () => { selected = q.id; render(); };
       nav.appendChild(el);
     }
@@ -545,51 +633,51 @@ function renderNav() {
 }
 function renderMain() {
   const main = $("main"); const q = byId(selected);
-  if (!q) { main.innerHTML = `<p class="empty">${S && qs().length ? "Pick a question on the left." : "No questions yet."}</p>`; return; }
+  if (!q) { main.innerHTML = `<p class="empty">${S && qs().length ? L("pickLeft") : L("noQuestions")}</p>`; return; }
   const s = local.staged[q.id] || {}; const lk = locked(); const d = local.drafts[q.id] || {};
   const rec = q.rec || {};
-  const crumb = [`${esc(q.id).toUpperCase()} · round ${esc(q.round)}`];
-  crumb.push(q.deps && q.deps.length ? `<span>after ${q.deps.map((x) => `<a href="#" data-go="${esc(x)}">${esc(x).toUpperCase()}</a>`).join(", ")}</span>` : `<span>root</span>`);
-  if (q.durable) crumb.push(`<span>durable</span>`);
-  if (q.updated) crumb.push(`<span class="upd">recommendation updated</span>`);
-  if (q.status === "deferred") crumb.push(`<span>deferred</span>`);
-  if (q.status === "reopened") crumb.push(`<span>reopened</span>`);
+  const crumb = [LANG === "zh-CN" ? `${esc(q.id).toUpperCase()} · 第 ${esc(q.round)} 轮` : `${esc(q.id).toUpperCase()} · round ${esc(q.round)}`];
+  crumb.push(q.deps && q.deps.length ? `<span>${esc(L("after"))}${q.deps.map((x) => `<a href="#" data-go="${esc(x)}">${esc(x).toUpperCase()}</a>`).join(", ")}</span>` : `<span>${esc(L("root"))}</span>`);
+  if (q.durable) crumb.push(`<span>${esc(L("durable"))}</span>`);
+  if (q.updated) crumb.push(`<span class="upd">${esc(L("recUpdated"))}</span>`);
+  if (q.status === "deferred") crumb.push(`<span>${esc(L("deferred"))}</span>`);
+  if (q.status === "reopened") crumb.push(`<span>${esc(L("reopened"))}</span>`);
   const pend = pendingActions(q.id);
   const pendAnswer = pend.filter((a) => a.type === "answer").pop() || null;
   const opts = (q.options || []).map((o) => {
     // A multi question shows one set at a time: the staged set, else the one in flight, else the recorded one.
     const shadow = isMulti(q) && (s.answer || pendAnswer);
     const isRec = recKeys(q).includes(o.k), chosen = !shadow && keysOf(q.answer).includes(o.k), staged = keysOf(s.answer).includes(o.k), pending = !staged && !(isMulti(q) && s.answer) && keysOf(pendAnswer).includes(o.k);
-    return `<li class="opt${isRec ? " rec" : ""}${chosen ? " chosen" : ""}${staged ? " staged" : ""}${pending ? " pending" : ""}" data-opt="${esc(o.k)}"><span class="k">${esc(o.k)}</span><span>${isRec ? `<div class="tag">Recommended</div>` : ""}${esc(o.text)}</span>${pending ? `<span class="check pending"><span class="spin"></span></span>` : `<span class="check">${CHECK}</span>`}</li>`;
+    return `<li class="opt${isRec ? " rec" : ""}${chosen ? " chosen" : ""}${staged ? " staged" : ""}${pending ? " pending" : ""}" data-opt="${esc(o.k)}"><span class="k">${esc(o.k)}</span><span>${isRec ? `<div class="tag">${esc(L("recommended"))}</div>` : ""}${esc(o.text)}</span>${pending ? `<span class="check pending"><span class="spin"></span></span>` : `<span class="check">${CHECK}</span>`}</li>`;
   }).join("") + (q.status === "answered" && q.answer && q.answer.kind === "text" && q.answer.text
-    ? `<li class="opt chosen text-answer"><span class="k"></span><span><div class="tag">Your answer</div>${esc(q.answer.text)}</span><span class="check">${CHECK}</span></li>` : "")
+    ? `<li class="opt chosen text-answer"><span class="k"></span><span><div class="tag">${esc(L("yourAnswer"))}</div>${esc(q.answer.text)}</span><span class="check">${CHECK}</span></li>` : "")
     + (pendAnswer && pendAnswer.kind === "text" && pendAnswer.text
-    ? `<li class="opt pending text-answer"><span class="k"></span><span><div class="tag">Your answer · sending</div>${esc(pendAnswer.text)}</span><span class="check pending"><span class="spin"></span></span></li>` : "");
-  const why = recKeys(q).length ? `<p class="why"><b>Why ${esc(keyLabel(rec))}.</b> ${esc(rec.why)}</p>`
-    : rec.text ? `<p class="why"><b>Suggested.</b> ${esc(rec.text)}${rec.why ? " — " + esc(rec.why) : ""}</p>` : rec.why ? `<p class="why">${esc(rec.why)}</p>` : "";
+    ? `<li class="opt pending text-answer"><span class="k"></span><span><div class="tag">${esc(L("yourAnswerSending"))}</div>${esc(pendAnswer.text)}</span><span class="check pending"><span class="spin"></span></span></li>` : "");
+  const why = recKeys(q).length ? `<p class="why"><b>${esc(L("why", keyLabel(rec)))}</b> ${esc(rec.why)}</p>`
+    : rec.text ? `<p class="why"><b>${esc(L("suggested"))}</b> ${esc(rec.text)}${rec.why ? " — " + esc(rec.why) : ""}</p>` : rec.why ? `<p class="why">${esc(rec.why)}</p>` : "";
   let stagedLine = "";
-  if (s.defer) stagedLine = "Staged: defer this question";
-  else if (s.reopen) stagedLine = "Staged: reopen this question";
-  else if (s.answer) stagedLine = s.answer.kind === "accept" ? `Staged: accept ${esc(keyLabel(s.answer))}` : keysOf(s.answer).length > 1 ? `Staged: options ${esc(keyLabel(s.answer))}` : keysOf(s.answer).length ? `Staged: option ${esc(keyLabel(s.answer))}` : `Staged text: “${esc(s.answer.text)}”`;
-  if (stagedLine) stagedLine = `<div class="staged-line">${stagedLine}<a href="#" id="clear-staged">clear</a></div>`;
+  if (s.defer) stagedLine = esc(L("stagedDefer"));
+  else if (s.reopen) stagedLine = esc(L("stagedReopen"));
+  else if (s.answer) stagedLine = s.answer.kind === "accept" ? esc(L("stagedAccept", keyLabel(s.answer))) : keysOf(s.answer).length > 1 ? esc(L("stagedOptions", keyLabel(s.answer))) : keysOf(s.answer).length ? esc(L("stagedOption", keyLabel(s.answer))) : esc(L("stagedText", s.answer.text));
+  if (stagedLine) stagedLine = `<div class="staged-line">${stagedLine}<a href="#" id="clear-staged">${esc(L("clear"))}</a></div>`;
   const pendBits = pend.filter((a) => a.type === "defer" || a.type === "reopen").map((a) => a.type);
-  if (pendBits.length) stagedLine += `<div class="pending-line"><span class="spin"></span>Sent: ${pendBits.join(", ")} this question · waiting for the agent</div>`;
+  if (pendBits.length) stagedLine += `<div class="pending-line"><span class="spin"></span>${esc(L("sentPending", pendBits.map((b) => L("act_" + b)).join(", ")))}</div>`;
   const controls = lk ? "" : `
       <div class="answer-row">
-        <textarea id="free" placeholder="${q.status === "answered" ? "Change your answer, or add nuance…" : (q.options || []).length ? "Free-text answer, if none of the options fit…" : "Your answer…"}">${esc(d.free || "")}</textarea>
-        <button id="stage-text" type="button" title="Stage text (⌘↩)">Stage text</button>
+        <textarea id="free" placeholder="${q.status === "answered" ? L("phChange") : (q.options || []).length ? L("phFree") : L("phAnswer")}">${esc(d.free || "")}</textarea>
+        <button id="stage-text" type="button" title="${esc(L("stageTextTip"))}">${esc(L("stageText"))}</button>
       </div>
-      <div class="links">${isMulti(q) && recKeys(q).length > 1 ? `<a href="#" id="accept-rec">Accept the recommended ${esc(keyLabel(rec))}</a>` : ""}${isOpen(q) ? `<a href="#" id="defer">Defer this question</a>` : `<a href="#" id="reopen">Reopen this question</a>`}</div>`;
+      <div class="links">${isMulti(q) && recKeys(q).length > 1 ? `<a href="#" id="accept-rec">${esc(L("acceptRec", keyLabel(rec)))}</a>` : ""}${isOpen(q) ? `<a href="#" id="defer">${esc(L("deferQ"))}</a>` : `<a href="#" id="reopen">${esc(L("reopenQ"))}</a>`}</div>`;
   const exploring = isExploring(q.id);
   const gate = sendState(false);
   const exploreBtn = (q.options || []).length && !lk
-    ? `<button id="explore" type="button"${exploring || gate.disabled ? " disabled" : ""}${gate.disabled && gate.why ? ` title="${esc(gate.why)}"` : ""}>${exploring ? `<span class="spin"></span> Exploring…` : q.explore ? "Explore again" : "Explore deeper"}</button>` : "";
+    ? `<button id="explore" type="button"${exploring || gate.disabled ? " disabled" : ""}${gate.disabled && gate.why ? ` title="${esc(gate.why)}"` : ""}>${exploring ? `<span class="spin"></span>${esc(L("exploring"))}` : q.explore ? L("exploreAgain") : L("exploreDeeper")}</button>` : "";
   const picked = (q.status === "answered" && q.answer) || !!s.answer || !!pendAnswer;
   main.innerHTML = `<article class="card${lk ? " locked" : ""}${picked ? " picked" : ""}">
       <div class="crumb">${crumb.join("")}</div>
       <div class="title-row"><h2>${esc(q.title)}</h2>${exploreBtn}</div>
       <p class="body">${esc(q.body)}</p>
-      ${opts && isMulti(q) ? `<p class="multi-hint">Pick one or more</p>` : ""}
+      ${opts && isMulti(q) ? `<p class="multi-hint">${esc(L("pickMulti"))}</p>` : ""}
       ${opts ? `<ul class="opts">${opts}</ul>` : ""}
       ${why}${stagedLine}${controls}
     </article>`;
@@ -611,22 +699,22 @@ function renderAside() {
   if (!q) { aside.innerHTML = ""; return; }
   const s = local.staged[q.id] || {}; const lk = locked(); const d = local.drafts[q.id] || {};
   const thread = Array.isArray(q.thread) ? q.thread : [];
-  const msgs = thread.map((m) => `<div class="msg ${m.who === "agent" ? "agent" : "user"}"><div class="who">${esc(m.who)}${m.at ? " · " + timeOf(m.at) : ""}</div><div class="text">${esc(m.text)}</div></div>`).join("")
-    + pendingActions(q.id).filter((a) => a.type === "thread").map((a) => `<div class="msg user pending"><div class="who"><span class="spin"></span>you · sending</div><div class="text">${esc(a.text)}</div></div>`).join("")
-    + (s.thread || []).map((t, i) => `<div class="msg user staged"><div class="who">you · staged</div><div class="text">${esc(t)}</div>${lk ? "" : `<a href="#" class="rm" data-rm="${i}" title="Remove">×</a>`}</div>`).join("");
+  const msgs = thread.map((m) => `<div class="msg ${m.who === "agent" ? "agent" : "user"}"><div class="who">${esc(whoLabel(m.who))}${m.at ? " · " + timeOf(m.at) : ""}</div><div class="text">${esc(m.text)}</div></div>`).join("")
+    + pendingActions(q.id).filter((a) => a.type === "thread").map((a) => `<div class="msg user pending"><div class="who"><span class="spin"></span>${esc(L("youSending"))}</div><div class="text">${esc(a.text)}</div></div>`).join("")
+    + (s.thread || []).map((t, i) => `<div class="msg user staged"><div class="who">${esc(L("youStaged"))}</div><div class="text">${esc(t)}</div>${lk ? "" : `<a href="#" class="rm" data-rm="${i}" title="${esc(L("remove"))}">×</a>`}</div>`).join("");
   const rec = q.rec || {};
   let explore = "";
   if (q.explore && Array.isArray(q.explore.rows) && q.explore.rows.length) {
     const li = (xs) => `<ul>${(Array.isArray(xs) ? xs : []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
-    explore = `<div class="explore-head">Pros and cons${q.explore.at ? " · " + timeOf(q.explore.at) : ""}</div>
-      <table class="procon"><thead><tr><th></th><th>Pros</th><th>Cons</th></tr></thead><tbody>${q.explore.rows.map((r) =>
+    explore = `<div class="explore-head">${esc(L("prosCons"))}${q.explore.at ? " · " + timeOf(q.explore.at) : ""}</div>
+      <table class="procon"><thead><tr><th></th><th>${esc(L("pros"))}</th><th>${esc(L("cons"))}</th></tr></thead><tbody>${q.explore.rows.map((r) =>
         `<tr><td class="k${recKeys(q).includes(r.option) ? " rec" : ""}">${esc(r.option)}</td><td class="pro">${li(r.pros)}</td><td class="con">${li(r.cons)}</td></tr>`).join("")}</tbody></table>`;
   }
-  if (isExploring(q.id)) explore += `<div class="explore-wait"><span class="spin"></span> Exploring: the agent is writing a pros and cons table for this question.</div>`;
+  if (isExploring(q.id)) explore += `<div class="explore-wait"><span class="spin"></span>${esc(L("exploreWait"))}</div>`;
   aside.innerHTML = `
-    <div class="head"><h3>Discussion</h3><div class="sub">${esc(q.id).toUpperCase()} · ${esc(q.title)}<span class="count">${thread.length} message${thread.length === 1 ? "" : "s"}</span></div></div>
-    <div class="msgs">${explore}${msgs || (explore ? "" : `<div class="empty-thread">Nothing yet. Ask anything about this question; the agent answers here on the next send.</div>`)}</div>
-    ${lk ? "" : `<div class="compose"><textarea id="thread-in" placeholder="Dig deeper on ${esc(q.id).toUpperCase()}…">${esc(d.thread || "")}</textarea><button id="stage-thread" type="button" title="Stage message (⌘↩)">Add to discussion</button></div>`}`;
+    <div class="head"><h3>${esc(L("discussion"))}</h3><div class="sub">${esc(q.id).toUpperCase()} · ${esc(q.title)}<span class="count">${esc(L("msgs", thread.length))}</span></div></div>
+    <div class="msgs">${explore}${msgs || (explore ? "" : `<div class="empty-thread">${esc(L("emptyThread"))}</div>`)}</div>
+    ${lk ? "" : `<div class="compose"><textarea id="thread-in" placeholder="${esc(L("digDeeper", String(q.id).toUpperCase()))}">${esc(d.thread || "")}</textarea><button id="stage-thread" type="button" title="${esc(L("stageMsgTip"))}">${esc(L("addDiscussion"))}</button></div>`}`;
   aside.querySelectorAll("[data-rm]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); removeThread(q.id, Number(a.dataset.rm)); }));
   if (lk) return;
   $("stage-thread").onclick = () => { const t = $("thread-in").value.trim(); if (t) stageThread(q.id, t); };
@@ -635,13 +723,13 @@ function renderAside() {
 function renderFeedback(aside) {
   const v = visual(); const lk = locked(); const d = local.drafts.__visual || {};
   const thread = Array.isArray(v.thread) ? v.thread : [];
-  const msgs = thread.map((m) => `<div class="msg ${m.who === "agent" ? "agent" : "user"}"><div class="who">${esc(m.who)}${m.at ? " · " + timeOf(m.at) : ""}</div><div class="text">${esc(m.text)}</div></div>`).join("")
-    + pendingOfType("visual-feedback").map((a) => `<div class="msg user pending"><div class="who"><span class="spin"></span>you · sending</div><div class="text">${esc(a.text)}</div></div>`).join("")
-    + local.vfeedback.map((t, i) => `<div class="msg user staged"><div class="who">you · staged</div><div class="text">${esc(t)}</div>${lk ? "" : `<a href="#" class="rm" data-rmf="${i}" title="Remove">×</a>`}</div>`).join("");
+  const msgs = thread.map((m) => `<div class="msg ${m.who === "agent" ? "agent" : "user"}"><div class="who">${esc(whoLabel(m.who))}${m.at ? " · " + timeOf(m.at) : ""}</div><div class="text">${esc(m.text)}</div></div>`).join("")
+    + pendingOfType("visual-feedback").map((a) => `<div class="msg user pending"><div class="who"><span class="spin"></span>${esc(L("youSending"))}</div><div class="text">${esc(a.text)}</div></div>`).join("")
+    + local.vfeedback.map((t, i) => `<div class="msg user staged"><div class="who">${esc(L("youStaged"))}</div><div class="text">${esc(t)}</div>${lk ? "" : `<a href="#" class="rm" data-rmf="${i}" title="${esc(L("remove"))}">×</a>`}</div>`).join("");
   aside.innerHTML = `
-    <div class="head"><h3>Visual feedback</h3><div class="sub">${v.kind === "diagram" ? "Diagram" : "Prototype"} · v${esc(v.version)}<span class="count">${thread.length} message${thread.length === 1 ? "" : "s"}</span></div></div>
-    <div class="msgs">${msgs || `<div class="empty-thread">Nothing yet. Say what is wrong or missing in the visual; the agent redraws it on the next send. If a note contradicts an answered question, that question is reopened for you.</div>`}</div>
-    ${lk ? "" : `<div class="compose"><textarea id="feedback-in" placeholder="Feedback on the visual…">${esc(d.thread || "")}</textarea><button id="stage-feedback" type="button" title="Stage feedback (⌘↩)">Add feedback</button></div>`}`;
+    <div class="head"><h3>${esc(L("visualFeedback"))}</h3><div class="sub">${esc(kindLabel(v))} · v${esc(v.version)}<span class="count">${esc(L("msgs", thread.length))}</span></div></div>
+    <div class="msgs">${msgs || `<div class="empty-thread">${esc(L("emptyFeedback"))}</div>`}</div>
+    ${lk ? "" : `<div class="compose"><textarea id="feedback-in" placeholder="${esc(L("phFeedback"))}">${esc(d.thread || "")}</textarea><button id="stage-feedback" type="button" title="${esc(L("stageFbTip"))}">${esc(L("addFeedback"))}</button></div>`}`;
   aside.querySelectorAll("[data-rmf]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); removeFeedback(Number(a.dataset.rmf)); }));
   if (lk) return;
   $("stage-feedback").onclick = () => { const t = $("feedback-in").value.trim(); if (t) stageFeedback(t); };
@@ -651,23 +739,23 @@ function renderFooter() {
   const n = stagedCount(); const list = $("staged-list");
   const parts = Object.entries(local.staged).map(([id, s]) => {
     const bits = [];
-    if (s.reopen) bits.push("reopen"); if (s.defer) bits.push("defer");
-    if (s.answer) bits.push(keysOf(s.answer).length ? "→ " + keyLabel(s.answer) : "→ text");
-    if (s.thread && s.thread.length) bits.push(`+${s.thread.length} msg`);
+    if (s.reopen) bits.push(L("act_reopen")); if (s.defer) bits.push(L("act_defer"));
+    if (s.answer) bits.push(keysOf(s.answer).length ? "→ " + keyLabel(s.answer) : "→ " + L("textAnswer"));
+    if (s.thread && s.thread.length) bits.push(L("plusMsg", s.thread.length));
     return `${esc(id).toUpperCase()} ${bits.join(" ")}`;
   });
-  if (local.vfeedback.length) parts.push(`visual +${local.vfeedback.length} msg`);
+  if (local.vfeedback.length) parts.push(L("visualPlus", local.vfeedback.length));
   const lp = lastPending();
-  const sent = lp ? `<span class="sent"><span class="spin"></span>Sent #${lp.seq} · waiting for the agent</span>` : "";
-  list.innerHTML = locked() ? "This grill is finished." : n ? `<b>${n} staged</b> · ${parts.join(" · ")}${sent ? " · " + sent : ""}` : sent || "Nothing staged. Pick an option or write in the discussion.";
+  const sent = lp ? `<span class="sent"><span class="spin"></span>${esc(L("sentWaiting", lp.seq))}</span>` : "";
+  list.innerHTML = locked() ? esc(L("grillFinished")) : n ? `<b>${esc(L("nStaged", n))}</b> · ${parts.join(" · ")}${sent ? " · " + sent : ""}` : sent || esc(L("nothingStaged"));
   const fa = $("finish-area");
   if (locked()) fa.innerHTML = "";
-  else if (isFinishing()) fa.innerHTML = `<button id="finish" type="button" disabled><span class="spin"></span>Finishing…</button>`;
-  else if (confirmFinish) fa.innerHTML = `<span class="confirm">Finish this grill? Everything staged goes with it; the agent writes the design doc and stops. <button id="finish-yes" class="ready" type="button">Finish grill</button><button id="finish-no" type="button">Cancel</button></span>`;
+  else if (isFinishing()) fa.innerHTML = `<button id="finish" type="button" disabled><span class="spin"></span>${esc(L("finishing"))}</button>`;
+  else if (confirmFinish) fa.innerHTML = `<span class="confirm">${esc(L("confirmFinish"))} <button id="finish-yes" class="ready" type="button">${esc(L("finishGrill"))}</button><button id="finish-no" type="button">${esc(L("cancel"))}</button></span>`;
   else {
     const a = (S && S.agent) || {}; const gate = sendState(false);
     const ready = allSettled() && a.status !== "working" && !lp && !gone;
-    fa.innerHTML = `<button id="finish" type="button" class="${ready ? "ready" : ""}"${gate.disabled ? " disabled" : ""}${ready ? ` title="Every question is settled. Finish writes the design doc."` : gate.disabled && gate.why ? ` title="${esc(gate.why)}"` : ""}>Finish grill</button>`;
+    fa.innerHTML = `<button id="finish" type="button" class="${ready ? "ready" : ""}"${gate.disabled ? " disabled" : ""}${ready ? ` title="${esc(L("readyTip"))}"` : gate.disabled && gate.why ? ` title="${esc(gate.why)}"` : ""}>${esc(L("finishGrill"))}</button>`;
   }
   const f = $("finish"); if (f && !f.disabled) f.onclick = () => { confirmFinish = true; render(); };
   const fy = $("finish-yes"); if (fy) fy.onclick = finishNow;
@@ -676,10 +764,17 @@ function renderFooter() {
 }
 function renderSend() {
   const { disabled, why } = sendState(); const n = stagedCount(); const b = $("send");
-  b.disabled = disabled; b.textContent = n ? `Send ${n} to Agent` : "Send to Agent";
+  b.disabled = disabled; b.textContent = n ? L("sendN", n) : L("sendToAgent");
   $("send-why").textContent = why;
 }
 
+$("lang-toggle").onclick = () => {
+  const next = LANG === "zh-CN" ? "en" : "zh-CN";
+  try { const u = new URL(location.href); u.searchParams.set("lang", next); history.replaceState(null, "", u); } catch {}
+  setLang(next);
+};
+LANG = pickLang();
+applyStatic();
 $("send").onclick = send;
 $("intent").onclick = () => { if ($("intent").classList.contains("show")) { intentOpen = !intentOpen; render(); } };
 $("use-subagent").onchange = (e) => { local.subagent = e.target.checked; commit(); };

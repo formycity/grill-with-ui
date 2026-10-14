@@ -384,7 +384,7 @@ function validateState(s) {
     list.forEach((m, i) => need(isObj(m) && (m.who === "user" || m.who === "agent") && str(m.text) && (m.at === undefined || str(m.at)),
       `${where}[${i}] must be {"who":"user"|"agent","text":"…","at":"ISO"}`));
   };
-  for (const k of ["topic", "intent", "doc", "project", "created", "note"]) check(s, k, str, `${k} must be a string`);
+  for (const k of ["topic", "intent", "doc", "project", "created", "note", "lang"]) check(s, k, str, `${k} must be a string`);
   if ("finished" in s) {
     need(isObj(s.finished), 'finished must be an object ({"doc","visual","at"})');
     texts(s.finished, ["doc", "visual", "at"], "finished");

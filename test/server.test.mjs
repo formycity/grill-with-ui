@@ -693,3 +693,12 @@ test("cli: an unknown subcommand prints usage and exits 2, including inherited n
     assert.match(r.stderr, /^grill: usage: server\.mjs [^\n]+\n$/, `${name} must print one usage line`);
   }
 });
+
+test("patch: lang is a plain string the page reads for its UI language; non-string lang is rejected", () => {
+  const session = seeded({ questions: [qn("q1", 1)] });
+  applied(session, { lang: "zh-CN" });
+  assert.equal(stateOf(session).lang, "zh-CN");
+  applied(session, { lang: null });
+  assert.ok(!("lang" in stateOf(session)));
+  rejected(session, { lang: 7 }, /lang/);
+});

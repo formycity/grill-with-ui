@@ -430,6 +430,15 @@ try {
   const a5 = multiEv.actions.find((a) => a.q === "q5"), a6 = multiEv.actions.find((a) => a.q === "q6");
   check("multi: send carries the option sets", a5 && a5.kind === "accept" && JSON.stringify(a5.options) === '["A","C"]' && a6 && a6.kind === "option" && JSON.stringify(a6.options) === '["A","B","C"]', JSON.stringify(multiEv.actions));
 
+  // i18n: ?lang=zh-CN switches the chrome to Chinese; the toggle flips back to English.
+  const zh = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await zh.goto(url + (url.includes("?") ? "&" : "?") + "lang=zh-CN");
+  await zh.waitForFunction(() => document.querySelector("#send").textContent.includes("Agent") && document.documentElement.lang === "zh-CN");
+  check("i18n: ?lang=zh-CN renders Chinese UI", (await zh.locator("#send").textContent()).includes("发送") && (await zh.locator("#terms-toggle").textContent()).startsWith("术语"));
+  await zh.locator("#lang-toggle").click();
+  check("i18n: toggle switches back to English", (await zh.locator("#terms-toggle").textContent()).startsWith("Terms") && zh.url().includes("lang=en"));
+  await zh.close();
+
   // The server-gone step above produces ERR_CONNECTION_REFUSED fetch failures by design.
   const real = errors.filter((e) => !e.includes("ERR_CONNECTION_REFUSED"));
   check("no console errors (besides the deliberate server-gone fetches)", real.length === 0, real.join(" | "));
